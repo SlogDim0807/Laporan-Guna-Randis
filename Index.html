@@ -207,24 +207,129 @@
     selectedFile: null
   };
 
-  function api(method, ...args){
-    return new Promise((resolve,reject)=>{
-      try{
-        if(typeof google==='undefined' || !google.script || !google.script.run){
-          reject(new Error('Aplikasi belum dibuka melalui URL Web App Google Apps Script.'));
-          return;
+  /*
+   * ================================================================
+   * GITHUB / GOOGLE APPS SCRIPT API BRIDGE
+   * ================================================================
+   * Saat file ini dijalankan dari GitHub Pages, google.script.run
+   * tidak tersedia. Karena itu seluruh panggilan backend diarahkan
+   * ke Web App Google Apps Script melalui HTTP POST.
+   *
+   * ISI URL /exec di bawah ini setelah Code.gs memiliki doPost().
+   *
+   * Contoh:
+   * const GITHUB_API_URL =
+   *   'https://script.google.com/macros/s/XXXXXXXXXXXX/exec';
+   */
+  const GITHUB_API_URL = 'PASTE_URL_WEB_APP_APPS_SCRIPT_DI_SINI';
+
+  function isAppsScriptHtml(){
+    return typeof google !== 'undefined' &&
+           google.script &&
+           google.script.run;
+  }
+
+  async function api(method, ...args){
+    /*
+     * Tetap kompatibel dengan Apps Script HTML Service.
+     * Jika Index.html dibuka dari Apps Script, mekanisme lama
+     * google.script.run tetap digunakan.
+     */
+    if(isAppsScriptHtml()){
+      return new Promise((resolve,reject)=>{
+        try{
+          const runner=google.script.run
+            .withSuccessHandler(resolve)
+            .withFailureHandler(err=>{
+              const msg=err && err.message ? err.message : String(err);
+              reject(new Error(msg));
+            });
+
+          if(typeof runner[method] !== 'function'){
+            reject(new Error(
+              'Fungsi server '+method+
+              ' tidak ditemukan. Deploy versi terbaru Code.gs.'
+            ));
+            return;
+          }
+          runner[method](...args);
+        }catch(e){
+          reject(e);
         }
-        const runner=google.script.run.withSuccessHandler(resolve).withFailureHandler(err=>{
-          const msg=err && err.message ? err.message : String(err);
-          reject(new Error(msg));
-        });
-        if(typeof runner[method] !== 'function'){
-          reject(new Error('Fungsi server '+method+' tidak ditemukan. Deploy versi terbaru Code.gs.'));
-          return;
-        }
-        runner[method](...args);
-      }catch(e){ reject(e); }
-    });
+      });
+    }
+
+    /*
+     * Mode GitHub Pages:
+     * kirim {method,args} ke doPost() pada Apps Script.
+     * Content-Type text/plain sengaja dipakai agar request sederhana
+     * dan tidak memerlukan preflight OPTIONS.
+     */
+    if(!GITHUB_API_URL ||
+       GITHUB_API_URL.indexOf('PASTE_URL_') === 0){
+      throw new Error(
+        'URL Web App Apps Script belum diisi pada konstanta GITHUB_API_URL.'
+      );
+    }
+
+    let response;
+    try{
+      response = await fetch(GITHUB_API_URL,{
+        method:'POST',
+        headers:{
+          'Content-Type':'text/plain;charset=utf-8'
+        },
+        body:JSON.stringify({
+          method:method,
+          args:args
+        }),
+        redirect:'follow',
+        cache:'no-store'
+      });
+    }catch(e){
+      throw new Error(
+        'Tidak dapat terhubung ke server Apps Script. '+
+        'Pastikan URL /exec benar, deployment aktif, akses Web App sesuai, '+
+        'dan doPost() sudah tersedia pada Code.gs.'
+      );
+    }
+
+    const raw = await response.text();
+
+    if(!response.ok){
+      throw new Error(
+        'Server Apps Script mengembalikan HTTP '+response.status+
+        (raw ? ': '+raw.slice(0,300) : '')
+      );
+    }
+
+    let result;
+    try{
+      result=JSON.parse(raw);
+    }catch(e){
+      throw new Error(
+        'Respons server bukan JSON yang valid. Pastikan doPost() pada Code.gs '+
+        'mengembalikan JSON.'
+      );
+    }
+
+    /*
+     * Format respons yang didukung:
+     * {ok:true,data:<hasil fungsi>}
+     * atau {success:true,data:<hasil fungsi>}
+     */
+    if(result && result.ok === false){
+      throw new Error(result.message || 'Server menolak permintaan.');
+    }
+    if(result && result.success === false){
+      throw new Error(result.message || 'Server menolak permintaan.');
+    }
+
+    if(Object.prototype.hasOwnProperty.call(result,'data')){
+      return result.data;
+    }
+
+    return result;
   }
   function showToast(message, type='success'){
     const t = document.getElementById('toast'); t.textContent = message; t.className = 'toast show ' + type; clearTimeout(window.__toastTimer); window.__toastTimer = setTimeout(()=>t.classList.remove('show'), 3600);
@@ -244,43 +349,27 @@
   function initials(name){ return String(name||'A').split(' ').map(x=>x[0]).join('').slice(0,2).toUpperCase(); }
   function roleLabel(role){ return role==='ADMIN' ? 'Administrator' : 'Driver'; }
 
-  // ============================================================
-  // TOGGLE PASSWORD - FINAL
-  // Tidak menggunakan inline onclick agar aman pada HTMLService.
-  // ============================================================
+  // Toggle password dibuat dengan event listener agar tetap bekerja di Google Apps Script HTMLService.
   window.togglePassword = function(){
     const input = document.getElementById('loginPassword');
     const btn = document.getElementById('btnTogglePassword');
+    if(!input || !btn) return false;
 
-    if (!input) {
-      console.error('TOGGLE PASSWORD: loginPassword tidak ditemukan.');
-      return false;
-    }
+    const willShow = input.type === 'password';
+    input.type = willShow ? 'text' : 'password';
+    btn.textContent = willShow ? '🙈 Sembunyikan' : '👁 Lihat';
+    btn.setAttribute('aria-label', willShow ? 'Sembunyikan password' : 'Lihat password');
+    btn.setAttribute('title', willShow ? 'Sembunyikan password' : 'Lihat password');
 
-    const show = input.type === 'password';
-    input.type = show ? 'text' : 'password';
-
-    if (btn) {
-      btn.textContent = show ? '🙈 Sembunyikan' : '👁 Lihat';
-      btn.setAttribute('aria-label', show ? 'Sembunyikan password' : 'Lihat password');
-      btn.setAttribute('title', show ? 'Sembunyikan password' : 'Lihat password');
-    }
-
+    // Pertahankan fokus pada field password setelah tombol ditekan.
     input.focus();
     return false;
   };
 
   function initPasswordToggle(){
     const btn = document.getElementById('btnTogglePassword');
-    if (!btn || btn.dataset.passwordBound === '1') return;
-
-    btn.dataset.passwordBound = '1';
-
-    btn.addEventListener('mousedown', function(event){
-      // Jangan biarkan klik tombol menghilangkan fokus dari password.
-      event.preventDefault();
-    });
-
+    if(!btn || btn.dataset.bound === '1') return;
+    btn.dataset.bound = '1';
     btn.addEventListener('click', function(event){
       event.preventDefault();
       event.stopPropagation();
@@ -288,28 +377,55 @@
     });
   }
 
-  // Coba langsung, lalu ulang setelah DOM siap.
+  // Inisialisasi langsung dan ulang saat DOM selesai dimuat.
   initPasswordToggle();
   document.addEventListener('DOMContentLoaded', initPasswordToggle);
 
   window.addEventListener('load', async ()=>{
     try{
-      if(location.protocol === 'file:'){ document.body.innerHTML='<div style="padding:40px;font-family:Arial">Buka file ini melalui Google Apps Script Web App, bukan langsung dari komputer.</div>'; return; }
-      if(typeof google==='undefined' || !google.script || !google.script.run){
-        setLoginStatus('Web App tidak terhubung ke Google Apps Script. Buka URL /exec hasil Deploy sebagai Web App.','error');
+      if(location.protocol === 'file:'){
+        document.body.innerHTML=
+          '<div style="padding:40px;font-family:Arial">'+
+          '<h2>File belum dijalankan dari web.</h2>'+
+          '<p>Untuk versi GitHub, upload file ini ke GitHub Pages.</p>'+
+          '</div>';
         return;
       }
+
+      /*
+       * Jangan lagi mensyaratkan google.script.run.
+       * File dapat berjalan dari:
+       * 1. Google Apps Script HTML Service
+       * 2. GitHub Pages
+       */
       if(state.token){
         const session = await api('getSession', state.token).catch(()=>null);
-        if(session){ await startApp(session); return; }
-        sessionStorage.removeItem('bbm_token'); state.token='';
+        if(session){
+          await startApp(session);
+          return;
+        }
+        sessionStorage.removeItem('bbm_token');
+        state.token='';
       }
+
       document.getElementById('loginPage').classList.remove('hidden');
-      // Tes koneksi ringan agar error permission/deployment terlihat sebelum pengguna klik Login.
-      api('ping').then(()=>setLoginStatus('', 'success')).catch(e=>setLoginStatus('Koneksi server belum siap: '+e.message,'error'));
+
+      // Tes koneksi backend.
+      api('ping')
+        .then(()=>setLoginStatus('Server terhubung. Silakan login.','success'))
+        .catch(e=>{
+          console.error('API PING ERROR',e);
+          setLoginStatus(
+            'Koneksi server belum siap: '+(e.message||e),
+            'error'
+          );
+        });
     }catch(e){
       console.error('LOAD ERROR',e);
-      setLoginStatus('Aplikasi gagal dimuat: '+(e.message||e),'error');
+      setLoginStatus(
+        'Aplikasi gagal dimuat: '+(e.message||e),
+        'error'
+      );
     }
   });
 
@@ -384,6 +500,23 @@ window.doLogin = async function () {
       return false;
     }
   };
+
+  function initPasswordToggleGithub(){
+    const btn=document.getElementById('btnTogglePassword');
+    const input=document.getElementById('loginPassword');
+    if(!btn || !input || btn.dataset.githubBound==='1') return;
+    btn.dataset.githubBound='1';
+    btn.addEventListener('click',function(e){
+      e.preventDefault();
+      e.stopPropagation();
+      const show=input.type==='password';
+      input.type=show?'text':'password';
+      btn.textContent=show?'🙈 Sembunyikan':'👁 Lihat';
+      btn.setAttribute('aria-label',show?'Sembunyikan password':'Lihat password');
+      btn.setAttribute('title',show?'Sembunyikan password':'Lihat password');
+    });
+  }
+  initPasswordToggleGithub();
 
   // Binding tombol login dilakukan langsung melalui JavaScript.
   // Jadi tidak bergantung pada onclick inline.
