@@ -142,7 +142,7 @@
           <label class="form-label">Password</label>
           <div class="password-wrap">
             <input id="loginPassword" type="password" class="input" autocomplete="current-password" placeholder="Masukkan password" data-login-enter="1">
-            <button id="btnTogglePassword" type="button" class="password-toggle" aria-label="Lihat password" title="Lihat password">👁 Lihat</button>
+            <button id="btnTogglePassword" type="button" class="password-toggle" aria-label="Lihat password" title="Lihat password" onclick="return window.togglePassword ? window.togglePassword() : false;">👁 Lihat</button>
           </div>
         </div>
         <button id="btnLogin" type="button" class="btn btn-primary btn-block">Masuk<span>→</span>
@@ -985,6 +985,24 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 });
+</script>
+<script>
+(function(){
+  function forcePasswordToggle(e){
+    const btn=e.target.closest && e.target.closest('#btnTogglePassword');
+    if(!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const input=document.getElementById('loginPassword');
+    if(!input) return;
+    const show=input.type === 'password';
+    input.type=show ? 'text' : 'password';
+    btn.textContent=show ? '🙈 Sembunyikan' : '👁 Lihat';
+    btn.setAttribute('aria-label',show ? 'Sembunyikan password' : 'Lihat password');
+    btn.setAttribute('title',show ? 'Sembunyikan password' : 'Lihat password');
+  }
+  document.addEventListener('click',forcePasswordToggle,true);
+})();
 </script>
 </body>
 </html>
