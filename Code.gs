@@ -73,6 +73,75 @@ function doGet() {
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
+
+// ==========================================================
+// GITHUB PAGES API BRIDGE
+// Frontend GitHub Pages memanggil fungsi Apps Script melalui
+// HTTP POST { method: 'namaFungsi', args: [...] }.
+// ==========================================================
+function doPost(e) {
+  try {
+    if (!e || !e.postData || !e.postData.contents) {
+      return jsonResponse_({ ok: false, message: 'Request POST kosong.' });
+    }
+
+    var request;
+    try {
+      request = JSON.parse(e.postData.contents);
+    } catch (parseErr) {
+      return jsonResponse_({ ok: false, message: 'Body request bukan JSON yang valid.' });
+    }
+
+    var method = String(request.method || '').trim();
+    var args = Array.isArray(request.args) ? request.args : [];
+
+    // Hanya fungsi yang memang dipakai frontend yang boleh dipanggil.
+    // Jangan membuka akses ke fungsi internal Apps Script secara bebas.
+    var allowed = [
+      'ping',
+      'login',
+      'getSession',
+      'logout',
+      'getBootstrap',
+      'getFormOptions',
+      'saveReport'
+    ];
+
+    if (allowed.indexOf(method) === -1) {
+      return jsonResponse_({
+        ok: false,
+        message: 'Metode API tidak diizinkan: ' + method
+      });
+    }
+
+    if (typeof this[method] !== 'function') {
+      return jsonResponse_({
+        ok: false,
+        message: 'Fungsi server tidak ditemukan: ' + method
+      });
+    }
+
+    var result = this[method].apply(null, args);
+
+    return jsonResponse_({
+      ok: true,
+      data: result
+    });
+
+  } catch (err) {
+    return jsonResponse_({
+      ok: false,
+      message: err && err.message ? err.message : String(err)
+    });
+  }
+}
+
+function jsonResponse_(payload) {
+  return ContentService
+    .createTextOutput(JSON.stringify(payload))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
 // =============================
 // INITIAL SETUP
 // =============================
