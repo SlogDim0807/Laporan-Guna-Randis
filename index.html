@@ -136,12 +136,12 @@
         <p>Masuk menggunakan akun Driver atau Admin.</p>
         <div class="form-group">
           <label class="form-label">Username</label>
-          <input id="loginUsername" class="input" autocomplete="username" placeholder="Masukkan username">
+          <input id="loginUsername" name="login_user" class="input" autocomplete="off" autocapitalize="none" spellcheck="false" readonly onfocus="this.removeAttribute('readonly')" placeholder="Masukkan username">
         </div>
         <div class="form-group">
           <label class="form-label">Password</label>
           <div class="password-wrap">
-            <input id="loginPassword" type="password" class="input" autocomplete="current-password" placeholder="Masukkan password" data-login-enter="1">
+            <input id="loginPassword" name="login_pass" type="password" class="input" autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly')" placeholder="Masukkan password" data-login-enter="1">
             <button id="btnTogglePassword" type="button" class="password-toggle" aria-label="Lihat password" title="Lihat password" onclick="return window.togglePasswordDirect ? window.togglePasswordDirect(event) : false;">👁 Lihat</button>
           </div>
         </div>
@@ -1036,6 +1036,41 @@ window.doLogin = async function () {
   document.addEventListener('keydown',function(e){
     if(e.key==='Enter' && e.target && e.target.id==='loginUsername') return;
   },true);
+})();
+</script>
+
+<script>
+(function(){
+  function clearLoginFields(){
+    var u=document.getElementById('loginUsername');
+    var p=document.getElementById('loginPassword');
+    if(u) u.value='';
+    if(p){ p.value=''; p.type='password'; }
+    var b=document.getElementById('btnTogglePassword');
+    if(b){
+      b.innerHTML='👁 Lihat';
+      b.setAttribute('aria-label','Lihat password');
+      b.setAttribute('title','Lihat password');
+    }
+  }
+  function prepareLoginFields(){
+    var u=document.getElementById('loginUsername');
+    var p=document.getElementById('loginPassword');
+    if(u) u.setAttribute('readonly','readonly');
+    if(p) p.setAttribute('readonly','readonly');
+    clearLoginFields();
+  }
+  document.addEventListener('DOMContentLoaded',function(){
+    prepareLoginFields();
+    setTimeout(clearLoginFields,100);
+    setTimeout(clearLoginFields,500);
+    setTimeout(clearLoginFields,1000);
+  });
+  window.addEventListener('pageshow',function(){
+    prepareLoginFields();
+    setTimeout(clearLoginFields,100);
+    setTimeout(clearLoginFields,500);
+  });
 })();
 </script>
 </body>
