@@ -142,7 +142,7 @@
           <label class="form-label">Password</label>
           <div class="password-wrap">
             <input id="loginPassword" type="password" class="input" autocomplete="current-password" placeholder="Masukkan password" data-login-enter="1">
-            <button id="btnTogglePassword" type="button" class="password-toggle" aria-label="Lihat password" title="Lihat password" onclick="return window.togglePassword ? window.togglePassword() : false;">👁 Lihat</button>
+            <button id="btnTogglePassword" type="button" class="password-toggle" aria-label="Lihat password" title="Lihat password" onclick="return window.togglePasswordDirect ? window.togglePasswordDirect(event) : false;">👁 Lihat</button>
           </div>
         </div>
         <button id="btnLogin" type="button" class="btn btn-primary btn-block">Masuk<span>→</span>
@@ -680,19 +680,29 @@ window.doLogin = async function () {
                 <input id="rManualNoPol" class="input" maxlength="30" placeholder="Contoh: AG 1234 XX">
               </div>
               <div class="form-group">
-                <label class="form-label">Merk dan Type Kendaraan <span class="required">*</span></label>
-                <input id="rManualMerk" class="input" maxlength="100" placeholder="Contoh: Toyota Innova">
+                <label class="form-label">Merk &amp; Tipe Kendaraan <span class="required">*</span></label>
+                <input id="rManualMerk" class="input" maxlength="100" placeholder="Contoh: Toyota Avanza">
               </div>
               <div class="form-group">
-                <label class="form-label">Konsumsi Km/Liter (Km) <span class="required">*</span></label>
-                <input id="rManualKmL" type="number" min="0.01" step="0.01" class="input" placeholder="Contoh: 10">
+                <label class="form-label">Jarak Tempuh Km/Liter <span class="required">*</span></label>
+                <input id="rManualKmL" type="number" min="0.01" step="0.01" class="input" placeholder="Contoh: 10" oninput="refreshAutoInfo()">
               </div>
               <div class="form-group">
-                <label class="form-label">BBM Rutin (Liter)</label>
+                <label class="form-label">BBM Pemanasan (Liter)</label>
                 <input id="rManualRutin" class="input bbm-readonly" value="0" readonly>
               </div>
             </div>
-            <div class="bbm-info-note">BBM Rutin untuk kendaraan yang dimasukkan secara manual otomatis ditetapkan <strong>0 Liter</strong>.</div>
+            <div class="form-grid bbm-grid-2" style="margin-top:12px">
+              <div class="form-group">
+                <label class="form-label">Jenis BBM <span class="required">*</span></label>
+                <select id="rManualFuel" class="select" onchange="refreshAutoInfo()">
+                  <option value="">-- Pilih Jenis BBM --</option>
+                  <option value="Pertalite">Pertalite</option>
+                  <option value="Solar">Solar</option>
+                </select>
+              </div>
+            </div>
+            <div class="bbm-info-note">BBM Pemanasan untuk kendaraan yang dimasukkan secara manual otomatis ditetapkan <strong>0 Liter</strong>.</div>
           </div>
         </section>
 
@@ -820,7 +830,9 @@ window.doLogin = async function () {
     const jarak=manualDestination?Number(document.getElementById('rManualJarak')?.value||0):(t?Number(t.jarakPP)||0:0);
     const km=manualVehicle?Number(document.getElementById('rManualKmL')?.value||0):(v?Number(v.kmPerLiter)||0:0);
     const rutin=manualVehicle?0:(v?Number(v.bbmRutin)||0:0);
-    const jenis=v?String(v.jenisBbm||'-'):'-';
+    const jenis=manualVehicle
+      ? (document.getElementById('rManualFuel')?.value || '-')
+      : (v?String(v.jenisBbm||'-'):'-');
     let support=km>0?(jarak/km)-rutin:0;
     if(support<0) support=0;
 
@@ -828,7 +840,7 @@ window.doLogin = async function () {
     set('autoJarak',formatNum(jarak)+' Km');
     set('autoKmL',formatNum(km)+' Km/Liter');
     set('autoRutin',formatNum(rutin)+' Liter');
-    set('autoJenis',manualVehicle?'Perlu dipilih':jenis);
+    set('autoJenis',jenis);
     set('autoDukungan',formatNum(support)+' Liter');
   }
 
@@ -856,8 +868,9 @@ window.doLogin = async function () {
       const noPol=document.getElementById('rManualNoPol')?.value.trim()||'';
       const merk=document.getElementById('rManualMerk')?.value.trim()||'';
       const km=Number(document.getElementById('rManualKmL')?.value||0);
-      if(!noPol||!merk||km<=0){
-        showToast('Lengkapi No. Pol, Merk/Type, dan konsumsi Km/Liter kendaraan manual.','error');
+      const jenisBbm=document.getElementById('rManualFuel')?.value||'';
+      if(!noPol||!merk||km<=0||!jenisBbm){
+        showToast('Lengkapi No. Pol, Merk & Tipe, Jarak Tempuh Km/Liter, dan Jenis BBM kendaraan manual.','error');
         return;
       }
     }
@@ -873,21 +886,31 @@ window.doLogin = async function () {
         return;
       }
     }
-    if(manualVehicle||manualDestination){
-      showToast('Form manual sudah siap. Penyimpanan kendaraan/tujuan manual memerlukan penyesuaian Code.gs agar data manual tersimpan ke Sheet LAPORAN.','error');
-      return;
-    }
     if(!state.selectedFile){ showToast('Surat Tugas wajib diunggah.','error'); return; }
     if(state.selectedFile.size>5*1024*1024){ showToast('Ukuran Surat Tugas maksimal 5 MB.','error'); return; }
 
     btn.disabled=true; btn.textContent='Menyimpan...';
     try{
       const dataUrl=await readFileAsDataUrl(state.selectedFile);
-      await api('saveReport',state.token,{tanggal,uraian,kendaraanId,tujuanId,driverId,suratTugas:{name:state.selectedFile.name,type:state.selectedFile.type,dataUrl}});
-      showToast('Data penggunaan BBM berhasil disimpan.');
-      state.bootstrap.dashboard=await api('getDashboard',state.token);
+      const payload={
+        tanggal,
+        uraian,
+        kendaraanId,
+        tujuanId,
+        driverId,
+        manualVehicle,
+        manualDestination,
+        manualNoPol: manualVehicle ? (document.getElementById('rManualNoPol')?.value.trim()||'') : '',
+        manualMerkType: manualVehicle ? (document.getElementById('rManualMerk')?.value.trim()||'') : '',
+        manualKmPerLiter: manualVehicle ? Number(document.getElementById('rManualKmL')?.value||0) : 0,
+        manualJenisBbm: manualVehicle ? (document.getElementById('rManualFuel')?.value||'') : '',
+        manualDestinationDescription: manualDestination ? (document.getElementById('rManualTujuan')?.value.trim()||'') : '',
+        manualDistancePP: manualDestination ? Number(document.getElementById('rManualJarak')?.value||0) : 0,
+        suratTugas:{name:state.selectedFile.name,type:state.selectedFile.type,dataUrl}
+      };
+      await api('saveReport',state.token,payload);
       state.selectedFile=null;
-      await showPage('reports');
+      showSaveSuccessMessage();
     }catch(e){
       showToast(e.message,'error');
     }finally{
@@ -895,6 +918,27 @@ window.doLogin = async function () {
       btn.textContent='▣ Simpan Data';
     }
   }
+  function showSaveSuccessMessage(){
+    const backdrop=document.getElementById('modalBackdrop');
+    const modal=document.getElementById('modal');
+    if(!backdrop||!modal){
+      alert('Data penggunaan BBM telah berhasil di simpan...!');
+      showPage('reports');
+      return;
+    }
+    modal.innerHTML=`
+      <div class="modal-head"><h3>Data Berhasil Disimpan</h3></div>
+      <div class="modal-body" style="text-align:center;padding:28px 24px">
+        <div style="font-size:46px;line-height:1;margin-bottom:14px">✓</div>
+        <div style="font-size:17px;font-weight:900;color:var(--text);margin-bottom:8px">Data penggunaan BBM telah berhasil di simpan...!</div>
+        <div style="font-size:13px;color:var(--muted)">Tampilan akan diarahkan ke Menu Laporan Penggunaan BBM.</div>
+      </div>
+      <div class="modal-foot" style="justify-content:center">
+        <button class="btn btn-primary" type="button" onclick="closeModal();showPage('reports')">OK, Lihat Laporan</button>
+      </div>`;
+    backdrop.classList.add('show');
+  }
+
   function resetReportForm(){ showPage('input'); }
 
   async function renderReports(){
@@ -961,47 +1005,35 @@ window.doLogin = async function () {
     try{ const f=await api('getFileData',state.token,fileId); const data='data:'+f.mime+';base64,'+f.base64; const w=window.open('', '_blank'); if(f.mime.indexOf('pdf')>=0) w.document.write('<title>'+escapeHtml(f.name)+'</title><iframe style="width:100vw;height:100vh;border:0" src="'+data+'"></iframe>'); else w.document.write('<title>'+escapeHtml(f.name)+'</title><div style="padding:20px"><img style="max-width:100%;height:auto" src="'+data+'"></div>'); w.document.close(); }catch(e){showToast(e.message,'error');}
   }
 </script>
-
-<script>
-function togglePasswordVisibility() {
-  const input = document.getElementById('loginPassword');
-  const button = document.getElementById('btnTogglePassword');
-  if (!input || !button) return;
-  const visible = input.type === 'password';
-  input.type = visible ? 'text' : 'password';
-  button.textContent = visible ? '🙈 Sembunyikan' : '👁 Lihat';
-  button.setAttribute('aria-label', visible ? 'Sembunyikan password' : 'Lihat password');
-  button.setAttribute('title', visible ? 'Sembunyikan password' : 'Lihat password');
-  input.focus();
-}
-
-document.addEventListener('DOMContentLoaded', function () {
-  const button = document.getElementById('btnTogglePassword');
-  if (button) {
-    button.addEventListener('click', function (event) {
-      event.preventDefault();
-      event.stopPropagation();
-      togglePasswordVisibility();
-    });
-  }
-});
-</script>
 <script>
 (function(){
-  function forcePasswordToggle(e){
-    const btn=e.target.closest && e.target.closest('#btnTogglePassword');
-    if(!btn) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const input=document.getElementById('loginPassword');
-    if(!input) return;
-    const show=input.type === 'password';
-    input.type=show ? 'text' : 'password';
-    btn.textContent=show ? '🙈 Sembunyikan' : '👁 Lihat';
-    btn.setAttribute('aria-label',show ? 'Sembunyikan password' : 'Lihat password');
-    btn.setAttribute('title',show ? 'Sembunyikan password' : 'Lihat password');
+  function toggle(){
+    var input=document.getElementById('loginPassword');
+    var btn=document.getElementById('btnTogglePassword');
+    if(!input || !btn) return false;
+    var show=(input.type || '').toLowerCase()==='password';
+    try { input.type=show?'text':'password'; } catch(e) { return false; }
+    btn.innerHTML=show?'🙈 Sembunyikan':'👁 Lihat';
+    btn.setAttribute('aria-label',show?'Sembunyikan password':'Lihat password');
+    btn.setAttribute('title',show?'Sembunyikan password':'Lihat password');
+    return false;
   }
-  document.addEventListener('click',forcePasswordToggle,true);
+  window.togglePasswordDirect=function(e){
+    if(e){e.preventDefault();e.stopPropagation();}
+    return toggle();
+  };
+  document.addEventListener('click',function(e){
+    var el=e.target;
+    if(!el) return;
+    var btn=el.closest ? el.closest('#btnTogglePassword') : null;
+    if(btn){
+      e.preventDefault(); e.stopPropagation();
+      toggle();
+    }
+  },true);
+  document.addEventListener('keydown',function(e){
+    if(e.key==='Enter' && e.target && e.target.id==='loginUsername') return;
+  },true);
 })();
 </script>
 </body>
