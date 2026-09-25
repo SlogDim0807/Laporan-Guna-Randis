@@ -136,12 +136,12 @@
         <p>Masuk menggunakan akun Driver atau Admin.</p>
         <div class="form-group">
           <label class="form-label">Username</label>
-          <input id="loginUsername" name="login_user" class="input" autocomplete="off" autocapitalize="none" spellcheck="false" readonly onfocus="this.removeAttribute('readonly')" placeholder="Masukkan username">
+          <input id="loginUsername" class="input" autocomplete="username" placeholder="Masukkan username">
         </div>
         <div class="form-group">
           <label class="form-label">Password</label>
           <div class="password-wrap">
-            <input id="loginPassword" name="login_pass" type="password" class="input" autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly')" placeholder="Masukkan password" data-login-enter="1">
+            <input id="loginPassword" type="password" class="input" autocomplete="current-password" placeholder="Masukkan password" data-login-enter="1">
             <button id="btnTogglePassword" type="button" class="password-toggle" aria-label="Lihat password" title="Lihat password" onclick="return window.togglePasswordDirect ? window.togglePasswordDirect(event) : false;">👁 Lihat</button>
           </div>
         </div>
@@ -162,7 +162,7 @@
         </div>
       </div>
       <div id="navDriver" class="sidebar-nav hidden">
-        <div class="nav-section">Menu Driver</div>
+        <div class="nav-section">Menu Pengguna</div>
         <button class="nav-btn" data-page="input" onclick="showPage('input')">▣ <span>Input Penggunaan BBM</span></button>
         <button class="nav-btn" data-page="reports" onclick="showPage('reports')">▤ <span>Laporan Saya</span></button>
         <button class="nav-btn" onclick="logoutApp()">↪ <span>Logout</span></button>
@@ -349,7 +349,14 @@
   function formatNum(v){ return Number(v||0).toLocaleString('id-ID',{maximumFractionDigits:2}); }
   function todayISO(){ const d=new Date(); const z=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate()); }
   function initials(name){ return String(name||'A').split(' ').map(x=>x[0]).join('').slice(0,2).toUpperCase(); }
-  function roleLabel(role){ return role==='ADMIN' ? 'Administrator' : 'Driver'; }
+  function roleLabel(role){
+    role=String(role||'').trim().toUpperCase();
+    if(role==='ADMIN') return 'Administrator';
+    if(role==='DRIVER') return 'Driver';
+    if(role==='STAF') return 'Staf';
+    if(role==='AJUDAN') return 'Ajudan';
+    return role || 'Pengguna';
+  }
 
   // Toggle password dibuat dengan event listener agar tetap bekerja di Google Apps Script HTMLService.
   window.togglePassword = function(){
@@ -559,7 +566,7 @@ window.doLogin = async function () {
       state.bootstrap=boot;
       document.getElementById('loginPage').classList.add('hidden');
       document.getElementById('appPage').classList.remove('hidden');
-      document.getElementById('navDriver').classList.toggle('hidden', user.role!=='DRIVER');
+      document.getElementById('navDriver').classList.toggle('hidden', user.role==='ADMIN');
       document.getElementById('navAdmin').classList.toggle('hidden', user.role!=='ADMIN');
       document.getElementById('profileName').textContent=user.displayName||'Pengguna';
       document.getElementById('profileRole').textContent=roleLabel(user.role);
@@ -576,7 +583,21 @@ window.doLogin = async function () {
       await logoutApp();
     }
   }
-  async function logoutApp(){ try{ if(state.token) await api('logout',state.token); }catch(e){} sessionStorage.removeItem('bbm_token'); state.token=''; state.user=null; document.getElementById('appPage').classList.add('hidden'); document.getElementById('loginPage').classList.remove('hidden'); }
+  async function logoutApp(){
+    try{ if(state.token) await api('logout',state.token); }catch(e){}
+    sessionStorage.removeItem('bbm_token');
+    state.token='';
+    state.user=null;
+    document.getElementById('appPage').classList.add('hidden');
+    document.getElementById('loginPage').classList.remove('hidden');
+    const u=document.getElementById('loginUsername');
+    const pw=document.getElementById('loginPassword');
+    if(u) u.value='';
+    if(pw){ pw.value=''; pw.type='password'; }
+    const toggle=document.getElementById('btnTogglePassword');
+    if(toggle){ toggle.textContent='👁 Lihat'; }
+    if(u) setTimeout(()=>u.focus(),50);
+  }
   function toggleSidebar(){ document.getElementById('sidebar').classList.toggle('open'); }
 
   async function showPage(page){
@@ -620,7 +641,7 @@ window.doLogin = async function () {
   function getOptions(){ return state.bootstrap.formOptions; }
   function renderInput(){
     const opt=getOptions();
-    const driver=state.user.role==='DRIVER'?state.user:null;
+    const driver=state.user.role!=='ADMIN'?state.user:null;
     const esc=(v)=>escapeHtml(v==null?'':String(v));
 
     document.getElementById('content').innerHTML=`
@@ -944,7 +965,7 @@ window.doLogin = async function () {
   function resetReportForm(){ showPage('input'); }
 
   async function renderReports(){
-    const opt=getOptions(); const isDriver=state.user.role==='DRIVER';
+    const opt=getOptions(); const isDriver=state.user.role!=='ADMIN';
     document.getElementById('content').innerHTML=`
       <div class="page-head"><div><h1>Laporan Penggunaan BBM</h1><p>${isDriver?'Riwayat perjalanan Anda.':'Rekap penggunaan BBM seluruh pengemudi.'}</p></div><div class="page-actions"><button class="btn btn-primary" onclick="showPage('input')">+ Input Data Baru</button><button class="btn btn-gold" onclick="exportExcelClient()">↓ Export Excel</button><button class="btn btn-outline" onclick="window.print()">⎙ Cetak</button></div></div>
       <div class="card section-card no-print"><div class="filters">
@@ -1036,41 +1057,6 @@ window.doLogin = async function () {
   document.addEventListener('keydown',function(e){
     if(e.key==='Enter' && e.target && e.target.id==='loginUsername') return;
   },true);
-})();
-</script>
-
-<script>
-(function(){
-  function clearLoginFields(){
-    var u=document.getElementById('loginUsername');
-    var p=document.getElementById('loginPassword');
-    if(u) u.value='';
-    if(p){ p.value=''; p.type='password'; }
-    var b=document.getElementById('btnTogglePassword');
-    if(b){
-      b.innerHTML='👁 Lihat';
-      b.setAttribute('aria-label','Lihat password');
-      b.setAttribute('title','Lihat password');
-    }
-  }
-  function prepareLoginFields(){
-    var u=document.getElementById('loginUsername');
-    var p=document.getElementById('loginPassword');
-    if(u) u.setAttribute('readonly','readonly');
-    if(p) p.setAttribute('readonly','readonly');
-    clearLoginFields();
-  }
-  document.addEventListener('DOMContentLoaded',function(){
-    prepareLoginFields();
-    setTimeout(clearLoginFields,100);
-    setTimeout(clearLoginFields,500);
-    setTimeout(clearLoginFields,1000);
-  });
-  window.addEventListener('pageshow',function(){
-    prepareLoginFields();
-    setTimeout(clearLoginFields,100);
-    setTimeout(clearLoginFields,500);
-  });
 })();
 </script>
 </body>
