@@ -662,9 +662,9 @@ window.doLogin = async function () {
           <div class="form-grid bbm-grid-2">
             <div class="form-group">
               <label class="form-label">Pengemudi <span class="required">*</span></label>
-              ${state.user.role==='ADMIN'
-                ? `<select id="rDriver" class="select"><option value="">-- Pilih Pengemudi --</option>${opt.drivers.map(d=>`<option value="${esc(d.id)}">${esc(d.id)} - ${esc(d.nama)}</option>`).join('')}</select>`
-                : `<div class="input bbm-readonly">${esc(driver?.displayName||'Pengemudi')} · ${esc(driver?.idDriver||'')}</div>`}
+              ${state.user.role==='DRIVER'
+                ? `<div class="input bbm-readonly">${esc(driver?.displayName||'Pengemudi')} · ${esc(driver?.idDriver||'')}</div>`
+                : `<select id="rDriver" class="select"><option value="">-- Pilih Pengemudi --</option>${opt.drivers.map(d=>`<option value="${esc(d.id)}">${esc(d.id)} - ${esc(d.nama)}</option>`).join('')}</select>`}
             </div>
             <div class="form-group">
               <label class="form-label">Hari & Tanggal <span class="required">*</span></label>
@@ -877,7 +877,9 @@ window.doLogin = async function () {
     const manualDestination=!!document.getElementById('chkManualDestination')?.checked;
     const kendaraanId=document.getElementById('rKendaraan')?.value||'';
     const tujuanId=document.getElementById('rTujuan')?.value||'';
-    const driverId=state.user.role==='ADMIN'?(document.getElementById('rDriver')?.value||''):state.user.idDriver;
+    const driverId=state.user.role==='DRIVER'
+      ? (state.user.idDriver||'')
+      : (document.getElementById('rDriver')?.value||'');
 
     if(!tanggal||!uraian||!driverId){
       showToast('Lengkapi data pengemudi, tanggal, dan uraian kegiatan terlebih dahulu.','error');
